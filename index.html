@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>PDF OCR ji deela - Ubah PDF Scan Menjadi Teks</title>
+    <meta name="description"
+        content="Proses file PDF scan Anda menjadi PDF yang dapat dicari dan disalin dengan teknologi OCR terbaik.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;800&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/lucide@latest"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --border: rgba(255, 255, 255, 0.1);
+            --text: #f8fafc;
+            --text-muted: #94a3b8;
+            --accent: #22d3ee;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Outfit', sans-serif;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(circle at 0% 0%, rgba(99, 102, 241, 0.15) 0, transparent 50%),
+                radial-gradient(circle at 100% 100%, rgba(34, 211, 238, 0.1) 0, transparent 50%);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .container {
+            width: 100%;
+            max-width: 600px;
+            z-index: 1;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 40px;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-size: 3rem;
+            font-weight: 800;
+            background: linear-gradient(to right, #818cf8, #22d3ee);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 12px;
+        }
+
+        p.subtitle {
+            color: var(--text-muted);
+            font-size: 1.1rem;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--border);
+            border-radius: 24px;
+            padding: 40px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            animation: fadeInUp 0.8s ease-out 0.2s both;
+        }
+
+        .upload-area {
+            border: 2px dashed var(--border);
+            border-radius: 16px;
+            padding: 60px 20px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .upload-area:hover,
+        .upload-area.dragover {
+            border-color: var(--primary);
+            background: rgba(99, 102, 241, 0.05);
+        }
+
+        .upload-area i {
+            width: 64px;
+            height: 64px;
+            color: var(--primary);
+            margin-bottom: 20px;
+            transition: transform 0.3s ease;
+        }
+
+        .upload-area:hover i {
+            transform: translateY(-5px);
+        }
+
+        .upload-area h3 {
+            font-size: 1.25rem;
+            margin-bottom: 8px;
+        }
+
+        .upload-area p {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+
+        #file-input {
+            display: none;
+        }
+
+        .file-info {
+            margin-top: 24px;
+            display: none;
+            padding: 16px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            align-items: center;
+            gap: 12px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        .file-info i {
+            color: var(--accent);
+        }
+
+        .file-name {
+            flex: 1;
+            font-size: 0.95rem;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .btn {
+            width: 100%;
+            padding: 16px;
+            border-radius: 12px;
+            border: none;
+            background: linear-gradient(to right, var(--primary), var(--primary-hover));
+            color: white;
+            font-weight: 600;
+            font-size: 1rem;
+            cursor: pointer;
+            margin-top: 24px;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            box-shadow: 0 10px 15px -3px rgba(99, 102, 241, 0.4);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 20px 25px -5px rgba(99, 102, 241, 0.5);
+        }
+
+        .btn:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .loader {
+            display: none;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: #white;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+
+        .status-msg {
+            margin-top: 16px;
+            text-align: center;
+            font-size: 0.9rem;
+            display: none;
+        }
+
+        .status-msg.error {
+            color: #ef4444;
+        }
+
+        .status-msg.success {
+            color: #10b981;
+        }
+
+        footer {
+            margin-top: 60px;
+            color: var(--text-muted);
+            font-size: 0.85rem;
+            text-align: center;
+            animation: fadeIn 1s ease-out 1s both;
+        }
+
+        /* Responsive */
+        @media (max-width: 480px) {
+            h1 {
+                font-size: 2.2rem;
+            }
+
+            .card {
+                padding: 24px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="login-container" class="container" style="display: none;">
+        <header>
+            <h1>PDF OCR Login</h1>
+            <p class="subtitle">Silakan login untuk menggunakan layanan OCR.</p>
+        </header>
+        <main class="card">
+            <div style="margin-bottom: 20px;">
+                <label
+                    style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Username</label>
+                <input type="text" id="login-username" class="btn"
+                    style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);"
+                    placeholder="user">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label
+                    style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Password</label>
+                <input type="password" id="login-password" class="btn"
+                    style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);"
+                    placeholder="••••••••">
+            </div>
+            <div id="captcha-section" style="margin-bottom: 20px; display: none;">
+                <label id="captcha-question"
+                    style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Captcha:
+                    Sedang memuat...</label>
+                <input type="number" id="captcha-answer" class="btn"
+                    style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);"
+                    placeholder="Jawaban angka">
+            </div>
+            <button id="login-btn" class="btn">
+                <span>Login Sekarang</span>
+            </button>
+            <div id="login-status" class="status-msg error"></div>
+        </main>
+    </div>
+
+    <div id="app-container" class="container" style="display: none;">
+        <header>
+            <h1>PDF OCR ji deela</h1>
+            <p class="subtitle">Ubah PDF hasil scan menjadi dokumen yang dapat diedit dalam hitungan detik.</p>
+        </header>
+
+        <main class="card">
+            <div id="drop-zone" class="upload-area">
+                <input type="file" id="file-input" accept=".pdf">
+                <i data-lucide="upload-cloud"></i>
+                <h3>Klik atau Seret PDF di Sini</h3>
+                <p>Mendukung file PDF hingga 50MB</p>
+            </div>
+
+            <div id="file-preview" class="file-info">
+                <i data-lucide="file-text"></i>
+                <span class="file-name" id="selected-file-name">filename.pdf</span>
+                <i data-lucide="check-circle" style="color: #10b981; width: 20px;"></i>
+            </div>
+
+            <button id="process-btn" class="btn" disabled>
+                <span class="btn-text">Mulai Proses OCR</span>
+                <div class="loader" id="btn-loader"></div>
+            </button>
+
+            <div id="status" class="status-msg"></div>
+
+            <div style="display: flex; justify-content: center; gap: 15px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+                <button id="show-history-btn"
+                    style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: color 0.2s;">
+                    <i data-lucide="history" style="width: 16px;"></i> Riwayat
+                </button>
+                <button id="show-change-pw-btn"
+                    style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: color 0.2s;">
+                    <i data-lucide="key" style="width: 16px;"></i> Ganti Password
+                </button>
+                <button id="logout-btn"
+                    style="background: none; border: none; color: #ef4444; cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: opacity 0.2s;">
+                    <i data-lucide="log-out" style="width: 16px;"></i> Logout
+                </button>
+            </div>
+        </main>
+
+        <footer>
+            <p>&copy; 2026 PDF OCR ji deela. Powered by ocrmypdf.</p>
+        </footer>
+    </div>
+
+    <div id="history-container" class="container" style="display: none;">
+        <header>
+            <h1>Riwayat Proses</h1>
+            <p class="subtitle">Cari dan filter dokumen yang sudah diproses.</p>
+        </header>
+        <main class="card">
+            <div style="display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px; background: rgba(255,255,255,0.03); padding: 15px; border-radius: 12px; border: 1px solid var(--border);">
+                <div style="position: relative; flex: 1;">
+                    <i data-lucide="search" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); width: 16px; color: var(--text-muted);"></i>
+                    <input type="text" id="history-search" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 10px 10px 10px 40px; box-shadow: none; border: 1px solid var(--border); font-size: 0.9rem;" placeholder="Cari nama file...">
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex: 1;">
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Dari Tanggal</label>
+                        <input type="date" id="history-start" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 8px; box-shadow: none; border: 1px solid var(--border); font-size: 0.85rem;">
+                    </div>
+                    <div style="flex: 1;">
+                        <label style="display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px;">Sampai Tanggal</label>
+                        <input type="date" id="history-end" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 8px; box-shadow: none; border: 1px solid var(--border); font-size: 0.85rem;">
+                    </div>
+                </div>
+            </div>
+            <div id="history-list" style="max-height: 350px; overflow-y: auto; margin-bottom: 15px; border-radius: 8px; background: rgba(0,0,0,0.2);">
+                <!-- History items will be injected here -->
+                <p style="text-align: center; color: var(--text-muted); padding: 20px;">Memuat riwayat...</p>
+            </div>
+            
+            <div id="pagination-controls" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;">
+                <button id="prev-page-btn" style="background: none; border: 1px solid var(--border); color: var(--text); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">&larr; Prev</button>
+                <span id="page-info" style="font-size: 0.85rem; color: var(--text-muted);">Halaman 1 dari 1</span>
+                <button id="next-page-btn" style="background: none; border: 1px solid var(--border); color: var(--text); padding: 5px 12px; border-radius: 6px; cursor: pointer; font-size: 0.8rem;">Next &rarr;</button>
+            </div>
+
+            <button id="back-to-app-from-history-btn" class="btn" style="background: rgba(255,255,255,0.1); box-shadow: none;">
+                <span>Kembali ke Aplikasi</span>
+            </button>
+        </main>
+    </div>
+
+    <div id="change-pw-container" class="container" style="display: none;">
+        <header>
+            <h1>Ganti Password</h1>
+            <p class="subtitle">Ganti password Anda secara berkala untuk keamanan.</p>
+        </header>
+        <main class="card">
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Password Sekarang</label>
+                <input type="password" id="current-password" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);" placeholder="••••••••">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Password Baru</label>
+                <input type="password" id="new-password" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);" placeholder="••••••••">
+            </div>
+            <div style="margin-bottom: 20px;">
+                <label style="display: block; margin-bottom: 8px; font-size: 0.9rem; color: var(--text-muted);">Konfirmasi Password Baru</label>
+                <input type="password" id="confirm-new-password" class="btn" style="background: rgba(255,255,255,0.05); text-align: left; padding: 12px; box-shadow: none; border: 1px solid var(--border);" placeholder="••••••••">
+            </div>
+            <div style="display: flex; gap: 10px;">
+                <button id="back-to-app-btn" class="btn" style="background: rgba(255,255,255,0.1); box-shadow: none; flex: 1;">
+                    <span>Batal</span>
+                </button>
+                <button id="confirm-change-pw-btn" class="btn" style="flex: 2;">
+                    <span>Update Password</span>
+                </button>
+            </div>
+            <div id="change-pw-status" class="status-msg"></div>
+        </main>
+    </div>
+
+    <script>
+        lucide.createIcons();
+
+        // Containers
+        const loginContainer = document.getElementById('login-container');
+        const appContainer = document.getElementById('app-container');
+        const changePwContainer = document.getElementById('change-pw-container');
+        const historyContainer = document.getElementById('history-container');
+
+        // Login elements
+        const loginBtn = document.getElementById('login-btn');
+        const loginPassword = document.getElementById('login-password');
+        const captchaQuestion = document.getElementById('captcha-question');
+        const captchaAnswer = document.getElementById('captcha-answer');
+        const loginStatus = document.getElementById('login-status');
+        const logoutBtn = document.getElementById('logout-btn');
+
+        // History elements
+        const showHistoryBtn = document.getElementById('show-history-btn');
+        const backToAppFromHistoryBtn = document.getElementById('back-to-app-from-history-btn');
+        const historyList = document.getElementById('history-list');
+
+        // Change Password elements
+        const showChangePwBtn = document.getElementById('show-change-pw-btn');
+        const backToAppBtn = document.getElementById('back-to-app-btn');
+        const confirmChangePwBtn = document.getElementById('confirm-change-pw-btn');
+        const currentPwInput = document.getElementById('current-password');
+        const newPwInput = document.getElementById('new-password');
+        const changePwStatus = document.getElementById('change-pw-status');
+
+        // OCR elements
+        const dropZone = document.getElementById('drop-zone');
+        const fileInput = document.getElementById('file-input');
+        const processBtn = document.getElementById('process-btn');
+        const filePreview = document.getElementById('file-preview');
+        const fileNameDisplay = document.getElementById('selected-file-name');
+        const statusMsg = document.getElementById('status');
+        const loader = document.getElementById('btn-loader');
+        const btnText = document.querySelector('.btn-text');
+
+        let selectedFile = null;
+
+        // --- Auth Logic ---
+        async function checkAuth() {
+            const res = await fetch('/api/check-auth');
+            const data = await res.json();
+            if (data.authenticated) {
+                showApp();
+            } else {
+                showLogin();
+            }
+        }
+
+        function showLogin() {
+            loginContainer.style.display = 'block';
+            appContainer.style.display = 'none';
+            changePwContainer.style.display = 'none';
+            historyContainer.style.display = 'none';
+            refreshCaptchaStatus();
+        }
+
+        function showApp() {
+            loginContainer.style.display = 'none';
+            appContainer.style.display = 'block';
+            changePwContainer.style.display = 'none';
+            historyContainer.style.display = 'none';
+            lucide.createIcons();
+        }
+
+        function showChangePw() {
+            loginContainer.style.display = 'none';
+            appContainer.style.display = 'none';
+            historyContainer.style.display = 'none';
+            changePwContainer.style.display = 'block';
+            changePwStatus.style.display = 'none';
+            currentPwInput.value = '';
+            newPwInput.value = '';
+            document.getElementById('confirm-new-password').value = '';
+        }
+
+        let currentHistoryPage = 1;
+        let totalHistoryPages = 1;
+
+        function showHistory() {
+            loginContainer.style.display = 'none';
+            appContainer.style.display = 'none';
+            changePwContainer.style.display = 'none';
+            historyContainer.style.display = 'block';
+            currentHistoryPage = 1;
+            fetchHistory();
+        }
+
+        async function fetchHistory() {
+            const q = document.getElementById('history-search').value;
+            const start = document.getElementById('history-start').value;
+            const end = document.getElementById('history-end').value;
+
+            historyList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">Memuat riwayat...</p>';
+            try {
+                const params = new URLSearchParams();
+                if (q) params.append('q', q);
+                if (start) params.append('start', start);
+                if (end) params.append('end', end);
+                params.append('page', currentHistoryPage);
+
+                const res = await fetch(`/api/history?${params.toString()}`);
+                const data = await res.json();
+                
+                totalHistoryPages = data.total_pages;
+                document.getElementById('page-info').textContent = `Halaman ${data.current_page} dari ${data.total_pages || 1}`;
+                document.getElementById('prev-page-btn').disabled = data.current_page <= 1;
+                document.getElementById('next-page-btn').disabled = data.current_page >= data.total_pages;
+
+                if (data.items.length === 0) {
+                    historyList.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 40px;">Tidak ada riwayat yang ditemukan.</p>';
+                    return;
+                }
+
+                historyList.innerHTML = '';
+                data.items.forEach(item => {
+                    const date = new Date(item.timestamp).toLocaleString('id-ID');
+                    const div = document.createElement('div');
+                    div.style.cssText = 'padding: 15px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 4px;';
+                    div.innerHTML = `
+                        <div style="font-weight: 600; font-size: 0.95rem; color: var(--text);">${item.filename}</div>
+                        <div style="font-size: 0.8rem; color: var(--text-muted);">${date}</div>
+                    `;
+                    historyList.appendChild(div);
+                });
+            } catch (err) {
+                historyList.innerHTML = '<p style="text-align: center; color: #ef4444; padding: 20px;">Gagal memuat riwayat.</p>';
+            }
+        }
+
+        async function refreshCaptchaStatus() {
+            const res = await fetch('/api/login-status');
+            const status = await res.json();
+
+            if (status.captcha_required) {
+                document.getElementById('captcha-section').style.display = 'block';
+                const capRes = await fetch('/api/captcha');
+                const capData = await capRes.json();
+                captchaQuestion.textContent = `Captcha: ${capData.question}`;
+            } else {
+                document.getElementById('captcha-section').style.display = 'none';
+            }
+        }
+
+        loginBtn.addEventListener('click', async () => {
+            const username = document.getElementById('login-username').value;
+            const password = loginPassword.value;
+            const answer = captchaAnswer.value;
+
+            if (!username || !password) {
+                loginStatus.textContent = 'Mohon isi username dan password.';
+                loginStatus.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('username', username);
+            formData.append('password', password);
+            if (answer) formData.append('captcha_answer', answer);
+
+            try {
+                const res = await fetch('/api/login', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.ok) {
+                    showApp();
+                } else {
+                    const error = await res.json();
+                    loginStatus.textContent = error.detail || 'Login gagal.';
+                    loginStatus.style.display = 'block';
+                    refreshCaptchaStatus();
+                }
+            } catch (err) {
+                loginStatus.textContent = 'Gagal menghubungi server.';
+                loginStatus.style.display = 'block';
+            }
+        });
+
+        logoutBtn.addEventListener('click', async () => {
+            await fetch('/api/logout', {method: 'POST'});
+            showLogin();
+        });
+
+        // --- History Logic ---
+        showHistoryBtn.addEventListener('click', showHistory);
+        backToAppFromHistoryBtn.addEventListener('click', showApp);
+
+        document.getElementById('prev-page-btn').addEventListener('click', () => {
+            if (currentHistoryPage > 1) {
+                currentHistoryPage--;
+                fetchHistory();
+            }
+        });
+
+        document.getElementById('next-page-btn').addEventListener('click', () => {
+            if (currentHistoryPage < totalHistoryPages) {
+                currentHistoryPage++;
+                fetchHistory();
+            }
+        });
+
+        // Filter events
+        let filterTimeout;
+        ['history-search', 'history-start', 'history-end'].forEach(id => {
+            const el = document.getElementById(id);
+            if (el) {
+                el.addEventListener('input', () => {
+                    clearTimeout(filterTimeout);
+                    filterTimeout = setTimeout(() => {
+                        currentHistoryPage = 1;
+                        fetchHistory();
+                    }, 500);
+                });
+            }
+        });
+
+        // --- Change Password Logic ---
+        showChangePwBtn.addEventListener('click', showChangePw);
+        backToAppBtn.addEventListener('click', showApp);
+
+        confirmChangePwBtn.addEventListener('click', async () => {
+            const currentPw = currentPwInput.value;
+            const newPw = newPwInput.value;
+            const confirmPw = document.getElementById('confirm-new-password').value;
+
+            if (!currentPw || !newPw || !confirmPw) {
+                changePwStatus.textContent = 'Mohon isi semua field.';
+                changePwStatus.className = 'status-msg error';
+                changePwStatus.style.display = 'block';
+                return;
+            }
+
+            if (newPw !== confirmPw) {
+                changePwStatus.textContent = 'Konfirmasi password baru tidak cocok.';
+                changePwStatus.className = 'status-msg error';
+                changePwStatus.style.display = 'block';
+                return;
+            }
+
+            const formData = new FormData();
+            formData.append('current_password', currentPw);
+            formData.append('new_password', newPw);
+
+            try {
+                const res = await fetch('/api/change-password', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (res.ok) {
+                    changePwStatus.textContent = 'Password berhasil diubah!';
+                    changePwStatus.className = 'status-msg success';
+                    changePwStatus.style.display = 'block';
+                    setTimeout(showApp, 2000);
+                } else {
+                    const error = await res.json();
+                    changePwStatus.textContent = error.detail || 'Gagal mengubah password.';
+                    changePwStatus.className = 'status-msg error';
+                    changePwStatus.style.display = 'block';
+                }
+            } catch (err) {
+                changePwStatus.textContent = 'Kesalahan koneksi.';
+                changePwStatus.className = 'status-msg error';
+                changePwStatus.style.display = 'block';
+            }
+        });
+
+        // Initial check
+        checkAuth();
+
+        // --- OCR Logic ---
+
+        // Handle Click Upload
+        dropZone.addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            handleFile(e.target.files[0]);
+        });
+
+        // Drag & Drop events
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            dropZone.addEventListener(eventName, () => dropZone.classList.remove('dragover'), false);
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            handleFile(dt.files[0]);
+        });
+
+        function handleFile(file) {
+            if (file && file.type === 'application/pdf') {
+                selectedFile = file;
+                fileNameDisplay.textContent = file.name;
+                filePreview.style.display = 'flex';
+                processBtn.disabled = false;
+                showStatus('', '');
+            } else if (file) {
+                showStatus('Mohon unggah file format PDF saja.', 'error');
+                selectedFile = null;
+                filePreview.style.display = 'none';
+                processBtn.disabled = true;
+            }
+        }
+
+        function showStatus(msg, type) {
+            statusMsg.textContent = msg;
+            statusMsg.className = 'status-msg ' + type;
+            statusMsg.style.display = msg ? 'block' : 'none';
+        }
+
+        processBtn.addEventListener('click', async () => {
+            if (!selectedFile) return;
+
+            // UI State: Processing
+            processBtn.disabled = true;
+            loader.style.display = 'block';
+            btnText.textContent = 'Memproses PDF...';
+            showStatus('Mohon tunggu, ini mungkin memakan waktu beberapa saat tergantung ukuran file.', 'success');
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            try {
+                const response = await fetch('/process', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    const baseName = selectedFile.name.substring(0, selectedFile.name.lastIndexOf('.'));
+                    a.download = `${baseName}_ocr.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+
+                    showStatus('Berhasil! File Anda sedang diunduh.', 'success');
+                    btnText.textContent = 'Selesai!';
+                } else {
+                    const error = await response.json();
+                    showStatus(`Error: ${error.detail || 'Gagal memproses file.'}`, 'error');
+                }
+            } catch (err) {
+                showStatus('Terjadi kesalahan koneksi ke server.', 'error');
+                console.error(err);
+            } finally {
+                loader.style.display = 'none';
+                btnText.textContent = 'Mulai Proses OCR';
+                processBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+
+</html>

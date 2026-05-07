@@ -4,16 +4,32 @@ import shutil
 import uuid
 import time
 from datetime import datetime, timedelta
-from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, Depends, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException, Request, Response, Depends, Form, BackgroundTasks
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from typing import Optional
 import random
+from dotenv import load_dotenv
+
+load_dotenv() # Load environment variables from .env
 
 import sqlite3
 from contextlib import contextmanager
 
+from fastapi.security import APIKeyHeader
+
 app = FastAPI(title="PDF OCR ji deela")
+
+# --- Security Token ---
+# Token ini akan digunakan di header Authorization
+# Diambil dari file .env
+API_TOKEN = os.getenv("KPUKONUT_OCR_TOKEN", "fallback-token-if-env-not-set")
+api_key_header = APIKeyHeader(name="Authorization")
+
+async def verify_token(api_key: str = Depends(api_key_header)):
+    if api_key != API_TOKEN:
+        raise HTTPException(status_code=403, detail="Could not validate credentials")
+    return api_key
 
 # --- Database Setup ---
 DB_FILE = "database.db"
@@ -304,11 +320,80 @@ async def check_auth(request: Request):
         return {"authenticated": True}
     return {"authenticated": False}
 
-@app.post("/process")
-async def process_pdf(file: UploadFile = File(...), session_id: str = Depends(get_current_user)):
-    if not file.filename.lower().endswith(".pdf"):
+def cleanup_files(paths: list):
+    """Delete files in the provided list of paths."""
+    for path in paths:
+        try:
+            if os.path.exists(path):
+                os.remove(path)
+        except Exception as e:
+            print(f"Error during cleanup: {e}")
+
+def run_ocr_process(input_path: str, output_path: str):
+    """Helper function to run the ocrmypdf process."""
+    process = subprocess.run(
+        ["ocrmypdf", "--force-ocr", input_path, output_path],
+        capture_output=True,
+        text=True
+    )
+    if process.returncode != 0:
+        print(f"OCR Error: {process.stderr}")
+        raise HTTPException(status_code=500, detail=f"OCR processing failed: {process.stderr}")
+    
+    if not os.path.exists(output_path):
+        raise HTTPException(status_code=500, detail="Output file not generated")
+    return True
+
+@app.post("/api/ocr-direct")
+async def ocr_direct(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    token: str = Depends(verify_token)
+):
+    """Endpoint baru untuk OCR via token Authorization di header."""
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    job_id = str(uuid.uuid4())
+    input_path = os.path.join(TEMP_DIR, f"{job_id}_input.pdf")
+    output_path = os.path.join(TEMP_DIR, f"{job_id}_output.pdf")
+
+    try:
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        run_ocr_process(input_path, output_path)
+        
+        # Hapus file input segera setelah OCR selesai
+        cleanup_files([input_path])
+
+        # Tambahkan background task untuk menghapus file output setelah response dikirim
+        background_tasks.add_task(cleanup_files, [output_path])
+
+        base_name = os.path.splitext(file.filename)[0]
+        return FileResponse(
+            output_path, 
+            filename=f"{base_name}_ocr.pdf",
+            media_type="application/pdf"
+        )
+    except Exception as e:
+        cleanup_files([input_path, output_path])
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Internal Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/process")
+async def process_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    session_id: str = Depends(get_current_user)
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Only PDF files are allowed")
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
     job_id = str(uuid.uuid4())
     input_path = os.path.join(TEMP_DIR, f"{job_id}_input.pdf")
     output_path = os.path.join(TEMP_DIR, f"{job_id}_output.pdf")
@@ -318,21 +403,14 @@ async def process_pdf(file: UploadFile = File(...), session_id: str = Depends(ge
         with open(input_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
 
-        # Run ocrmypdf
-        # --skip-text: Skip OCR on pages that already contain text
-        # --optimize 1: Optimize for size
-        process = subprocess.run(
-            ["ocrmypdf", "--force-ocr", input_path, output_path],
-            capture_output=True,
-            text=True
-        )
+        # Run OCR helper
+        run_ocr_process(input_path, output_path)
 
-        if process.returncode != 0:
-            print(f"OCR Error: {process.stderr}")
-            raise HTTPException(status_code=500, detail=f"OCR processing failed: {process.stderr}")
+        # Hapus file input segera setelah OCR selesai
+        cleanup_files([input_path])
 
-        if not os.path.exists(output_path):
-            raise HTTPException(status_code=500, detail="Output file not generated")
+        # Tambahkan background task untuk menghapus file output setelah response dikirim
+        background_tasks.add_task(cleanup_files, [output_path])
 
         # Record in history
         username = sessions[session_id]['username']
@@ -352,6 +430,9 @@ async def process_pdf(file: UploadFile = File(...), session_id: str = Depends(ge
         )
 
     except Exception as e:
+        cleanup_files([input_path, output_path])
+        if isinstance(e, HTTPException):
+            raise e
         print(f"Internal Error: {str(e)}")
         raise HTTPException(status_code=500, detail=str(e))
     

@@ -10,26 +10,15 @@ from fastapi.staticfiles import StaticFiles
 from typing import Optional
 import random
 from dotenv import load_dotenv
+from pypdf import PdfWriter
 
 load_dotenv() # Load environment variables from .env
 
 import sqlite3
 from contextlib import contextmanager
-
-from fastapi.security import APIKeyHeader
+import socket
 
 app = FastAPI(title="PDF OCR ji deela")
-
-# --- Security Token ---
-# Token ini akan digunakan di header Authorization
-# Diambil dari file .env
-API_TOKEN = os.getenv("KPUKONUT_OCR_TOKEN", "fallback-token-if-env-not-set")
-api_key_header = APIKeyHeader(name="Authorization")
-
-async def verify_token(api_key: str = Depends(api_key_header)):
-    if api_key != API_TOKEN:
-        raise HTTPException(status_code=403, detail="Could not validate credentials")
-    return api_key
 
 # --- Database Setup ---
 DB_FILE = "database.db"
@@ -320,6 +309,20 @@ async def check_auth(request: Request):
         return {"authenticated": True}
     return {"authenticated": False}
 
+@app.get("/api/server-info")
+async def get_server_info():
+    """Mengembalikan informasi server seperti IP Local."""
+    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    try:
+        # Tidak perlu benar-benar terhubung, ini hanya untuk mendapatkan interface IP
+        s.connect(('8.8.8.8', 1))
+        local_ip = s.getsockname()[0]
+    except Exception:
+        local_ip = '127.0.0.1'
+    finally:
+        s.close()
+    return {"ip": local_ip, "port": 8001}
+
 def cleanup_files(paths: list):
     """Delete files in the provided list of paths."""
     for path in paths:
@@ -347,10 +350,9 @@ def run_ocr_process(input_path: str, output_path: str):
 @app.post("/api/ocr-direct")
 async def ocr_direct(
     background_tasks: BackgroundTasks,
-    file: UploadFile = File(...), 
-    token: str = Depends(verify_token)
+    file: UploadFile = File(...)
 ):
-    """Endpoint baru untuk OCR via token Authorization di header."""
+    """Endpoint untuk OCR tanpa autentikasi token."""
     if not file.filename or not file.filename.lower().endswith(".pdf"):
         raise HTTPException(status_code=400, detail="Only PDF files are allowed")
 
@@ -431,6 +433,137 @@ async def process_pdf(
 
     except Exception as e:
         cleanup_files([input_path, output_path])
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Internal Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/combine")
+async def combine_pdf(
+    background_tasks: BackgroundTasks,
+    files: list[UploadFile] = File(...), 
+    session_id: str = Depends(get_current_user)
+):
+    if not files or len(files) < 2:
+        raise HTTPException(status_code=400, detail="Minimal 2 file PDF dibutuhkan untuk digabungkan.")
+    
+    for file in files:
+        if not file.filename or not file.filename.lower().endswith(".pdf"):
+            raise HTTPException(status_code=400, detail="Semua file harus berformat PDF.")
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    job_id = str(uuid.uuid4())
+    
+    input_paths = []
+    output_path = os.path.join(TEMP_DIR, f"{job_id}_combined.pdf")
+    
+    try:
+        # Save uploaded files
+        for i, file in enumerate(files):
+            input_path = os.path.join(TEMP_DIR, f"{job_id}_input_{i}.pdf")
+            with open(input_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+            input_paths.append(input_path)
+            
+        # Combine using pypdf
+        merger = PdfWriter()
+        for pdf_path in input_paths:
+            merger.append(pdf_path)
+            
+        merger.write(output_path)
+        merger.close()
+            
+        if not os.path.exists(output_path):
+            raise HTTPException(status_code=500, detail="Output file tidak ditemukan.")
+            
+        cleanup_files(input_paths)
+        background_tasks.add_task(cleanup_files, [output_path])
+        
+        # Record in history
+        username = sessions[session_id]['username']
+        with get_db() as conn:
+            cursor = conn.cursor()
+            combined_name = f"combined_{files[0].filename}"
+            cursor.execute("""
+                INSERT INTO ocr_history (username, original_filename) 
+                VALUES (?, ?)
+            """, (username, combined_name))
+            conn.commit()
+
+        return FileResponse(
+            output_path, 
+            filename="Combined_Document.pdf",
+            media_type="application/pdf"
+        )
+
+    except Exception as e:
+        cleanup_files(input_paths)
+        if os.path.exists(output_path):
+            cleanup_files([output_path])
+        if isinstance(e, HTTPException):
+            raise e
+        print(f"Internal Error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.post("/api/compress")
+async def compress_pdf(
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...), 
+    session_id: str = Depends(get_current_user)
+):
+    if not file.filename or not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=400, detail="Hanya file PDF yang diizinkan.")
+
+    os.makedirs(TEMP_DIR, exist_ok=True)
+    job_id = str(uuid.uuid4())
+    input_path = os.path.join(TEMP_DIR, f"{job_id}_input.pdf")
+    output_path = os.path.join(TEMP_DIR, f"{job_id}_compressed.pdf")
+
+    try:
+        with open(input_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+
+        # Compress using Ghostscript
+        # /screen: low resolution, smallest size.
+        cmd = [
+            "gs", "-sDEVICE=pdfwrite", "-dCompatibilityLevel=1.4",
+            "-dPDFSETTINGS=/screen", "-dNOPAUSE", "-dQUIET", "-dBATCH",
+            f"-sOutputFile={output_path}", input_path
+        ]
+        process = subprocess.run(cmd, capture_output=True, text=True)
+        
+        if process.returncode != 0:
+            print(f"Ghostscript Error: {process.stderr}")
+            raise HTTPException(status_code=500, detail="Gagal mengompres PDF.")
+            
+        if not os.path.exists(output_path):
+            raise HTTPException(status_code=500, detail="Output file tidak ditemukan.")
+            
+        cleanup_files([input_path])
+        background_tasks.add_task(cleanup_files, [output_path])
+        
+        # Record in history
+        username = sessions[session_id]['username']
+        with get_db() as conn:
+            cursor = conn.cursor()
+            compressed_name = f"compressed_{file.filename}"
+            cursor.execute("""
+                INSERT INTO ocr_history (username, original_filename) 
+                VALUES (?, ?)
+            """, (username, compressed_name))
+            conn.commit()
+
+        base_name = os.path.splitext(file.filename)[0]
+        return FileResponse(
+            output_path, 
+            filename=f"{base_name}_compressed.pdf",
+            media_type="application/pdf"
+        )
+
+    except Exception as e:
+        cleanup_files([input_path])
+        if os.path.exists(output_path):
+            cleanup_files([output_path])
         if isinstance(e, HTTPException):
             raise e
         print(f"Internal Error: {str(e)}")

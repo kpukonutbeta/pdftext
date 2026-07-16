@@ -302,8 +302,16 @@
 
     <div id="app-container" class="container" style="display: none;">
         <header>
-            <h1>PDF OCR ji deela</h1>
-            <p class="subtitle">Ubah PDF hasil scan menjadi dokumen yang dapat diedit dalam hitungan detik.</p>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1>PDF OCR ji deela</h1>
+                    <p class="subtitle">Ubah PDF hasil scan menjadi dokumen yang dapat diedit dalam hitungan detik.</p>
+                </div>
+                <div id="server-badge" style="background: rgba(255,255,255,0.1); padding: 5px 12px; border-radius: 20px; font-size: 0.75rem; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(5px); display: none;">
+                    <span style="opacity: 0.6; margin-right: 5px;">Server:</span>
+                    <span id="server-ip" style="font-weight: 600;"></span>
+                </div>
+            </div>
         </header>
 
         <main class="card">
@@ -328,6 +336,14 @@
             <div id="status" class="status-msg"></div>
 
             <div style="display: flex; justify-content: center; gap: 15px; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--border);">
+                <button id="show-combine-btn"
+                    style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: color 0.2s;">
+                    <i data-lucide="layers" style="width: 16px;"></i> Combine PDF
+                </button>
+                <button id="show-compress-btn"
+                    style="background: none; border: none; color: var(--accent); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: color 0.2s;">
+                    <i data-lucide="minimize" style="width: 16px;"></i> Compress PDF
+                </button>
                 <button id="show-history-btn"
                     style="background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 0.85rem; display: flex; align-items: center; gap: 6px; transition: color 0.2s;">
                     <i data-lucide="history" style="width: 16px;"></i> Riwayat
@@ -346,6 +362,78 @@
         <footer>
             <p>&copy; 2026 PDF OCR ji deela. Powered by ocrmypdf.</p>
         </footer>
+    </div>
+
+    </div>
+
+    <div id="combine-container" class="container" style="display: none;">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1>Combine PDF</h1>
+                    <p class="subtitle">Pilih multiple PDF secara berurutan, lalu gabungkan menjadi satu.</p>
+                </div>
+            </div>
+        </header>
+        <main class="card">
+            <div id="combine-drop-zone" class="upload-area" style="padding: 30px 20px;">
+                <input type="file" id="combine-file-input" accept=".pdf" multiple style="display: none;">
+                <i data-lucide="copy"></i>
+                <h3>Pilih PDF untuk Digabungkan</h3>
+                <p>Anda bisa memilih banyak file sekaligus</p>
+            </div>
+            
+            <div id="combine-file-list" style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px; max-height: 200px; overflow-y: auto;">
+                <!-- Daftar file akan muncul di sini -->
+            </div>
+
+            <button id="process-combine-btn" class="btn" disabled style="margin-top: 20px;">
+                <span class="btn-text" id="combine-btn-text">Mulai Gabungkan PDF</span>
+                <div class="loader" id="combine-btn-loader"></div>
+            </button>
+
+            <div id="combine-status" class="status-msg"></div>
+
+            <button id="back-to-app-from-combine-btn" class="btn" style="background: rgba(255,255,255,0.1); box-shadow: none; margin-top: 20px;">
+                <span>Kembali ke OCR</span>
+            </button>
+        </main>
+    </div>
+
+    <div id="compress-container" class="container" style="display: none;">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: flex-start;">
+                <div>
+                    <h1>Compress PDF</h1>
+                    <p class="subtitle">Kecilkan ukuran file PDF Anda agar lebih hemat ruang.</p>
+                </div>
+            </div>
+        </header>
+        <main class="card">
+            <div id="compress-drop-zone" class="upload-area" style="padding: 30px 20px;">
+                <input type="file" id="compress-file-input" accept=".pdf" style="display: none;">
+                <i data-lucide="minimize-2"></i>
+                <h3>Pilih PDF untuk Dikompres</h3>
+                <p>Klik atau seret file PDF Anda ke sini</p>
+            </div>
+            
+            <div id="compress-file-preview" class="file-info" style="display: none;">
+                <i data-lucide="file-text"></i>
+                <span class="file-name" id="compress-selected-file-name">filename.pdf</span>
+                <i data-lucide="check-circle" style="color: #10b981; width: 20px;"></i>
+            </div>
+
+            <button id="process-compress-btn" class="btn" disabled style="margin-top: 20px;">
+                <span class="btn-text" id="compress-btn-text">Mulai Kompres PDF</span>
+                <div class="loader" id="compress-btn-loader"></div>
+            </button>
+
+            <div id="compress-status" class="status-msg"></div>
+
+            <button id="back-to-app-from-compress-btn" class="btn" style="background: rgba(255,255,255,0.1); box-shadow: none; margin-top: 20px;">
+                <span>Kembali ke Beranda</span>
+            </button>
+        </main>
     </div>
 
     <div id="history-container" class="container" style="display: none;">
@@ -420,9 +508,27 @@
     <script>
         lucide.createIcons();
 
-        // Containers
+        // --- Server Info ---
+        async function fetchServerInfo() {
+            try {
+                const res = await fetch('/api/server-info');
+                const data = await res.json();
+                if (data.ip) {
+                    const badge = document.getElementById('server-badge');
+                    const ipSpan = document.getElementById('server-ip');
+                    ipSpan.textContent = `${data.ip}:${data.port}`;
+                    badge.style.display = 'block';
+                }
+            } catch (err) {
+                console.error('Failed to fetch server info', err);
+            }
+        }
+        fetchServerInfo();
+
         const loginContainer = document.getElementById('login-container');
         const appContainer = document.getElementById('app-container');
+        const combineContainer = document.getElementById('combine-container');
+        const compressContainer = document.getElementById('compress-container');
         const changePwContainer = document.getElementById('change-pw-container');
         const historyContainer = document.getElementById('history-container');
 
@@ -433,6 +539,33 @@
         const captchaAnswer = document.getElementById('captcha-answer');
         const loginStatus = document.getElementById('login-status');
         const logoutBtn = document.getElementById('logout-btn');
+
+        // Combine elements
+        const showCombineBtn = document.getElementById('show-combine-btn');
+        const backToAppFromCombineBtn = document.getElementById('back-to-app-from-combine-btn');
+        const combineDropZone = document.getElementById('combine-drop-zone');
+        const combineFileInput = document.getElementById('combine-file-input');
+        const processCombineBtn = document.getElementById('process-combine-btn');
+        const combineFileList = document.getElementById('combine-file-list');
+        const combineStatusMsg = document.getElementById('combine-status');
+        const combineLoader = document.getElementById('combine-btn-loader');
+        const combineBtnText = document.getElementById('combine-btn-text');
+
+        let combineFiles = [];
+
+        // Compress elements
+        const showCompressBtn = document.getElementById('show-compress-btn');
+        const backToAppFromCompressBtn = document.getElementById('back-to-app-from-compress-btn');
+        const compressDropZone = document.getElementById('compress-drop-zone');
+        const compressFileInput = document.getElementById('compress-file-input');
+        const processCompressBtn = document.getElementById('process-compress-btn');
+        const compressFilePreview = document.getElementById('compress-file-preview');
+        const compressFileNameDisplay = document.getElementById('compress-selected-file-name');
+        const compressStatusMsg = document.getElementById('compress-status');
+        const compressLoader = document.getElementById('compress-btn-loader');
+        const compressBtnText = document.getElementById('compress-btn-text');
+
+        let compressFile = null;
 
         // History elements
         const showHistoryBtn = document.getElementById('show-history-btn');
@@ -473,6 +606,8 @@
         function showLogin() {
             loginContainer.style.display = 'block';
             appContainer.style.display = 'none';
+            combineContainer.style.display = 'none';
+            compressContainer.style.display = 'none';
             changePwContainer.style.display = 'none';
             historyContainer.style.display = 'none';
             refreshCaptchaStatus();
@@ -481,14 +616,45 @@
         function showApp() {
             loginContainer.style.display = 'none';
             appContainer.style.display = 'block';
+            combineContainer.style.display = 'none';
+            compressContainer.style.display = 'none';
             changePwContainer.style.display = 'none';
             historyContainer.style.display = 'none';
+            lucide.createIcons();
+        }
+
+        function showCombine() {
+            loginContainer.style.display = 'none';
+            appContainer.style.display = 'none';
+            historyContainer.style.display = 'none';
+            changePwContainer.style.display = 'none';
+            compressContainer.style.display = 'none';
+            combineContainer.style.display = 'block';
+            combineStatusMsg.style.display = 'none';
+            combineFiles = [];
+            renderCombineList();
+            lucide.createIcons();
+        }
+
+        function showCompress() {
+            loginContainer.style.display = 'none';
+            appContainer.style.display = 'none';
+            historyContainer.style.display = 'none';
+            changePwContainer.style.display = 'none';
+            combineContainer.style.display = 'none';
+            compressContainer.style.display = 'block';
+            compressStatusMsg.style.display = 'none';
+            compressFile = null;
+            compressFilePreview.style.display = 'none';
+            processCompressBtn.disabled = true;
             lucide.createIcons();
         }
 
         function showChangePw() {
             loginContainer.style.display = 'none';
             appContainer.style.display = 'none';
+            combineContainer.style.display = 'none';
+            compressContainer.style.display = 'none';
             historyContainer.style.display = 'none';
             changePwContainer.style.display = 'block';
             changePwStatus.style.display = 'none';
@@ -503,6 +669,8 @@
         function showHistory() {
             loginContainer.style.display = 'none';
             appContainer.style.display = 'none';
+            combineContainer.style.display = 'none';
+            compressContainer.style.display = 'none';
             changePwContainer.style.display = 'none';
             historyContainer.style.display = 'block';
             currentHistoryPage = 1;
@@ -791,7 +959,207 @@
                 processBtn.disabled = false;
             }
         });
+        // --- Combine Logic ---
+        showCombineBtn.addEventListener('click', showCombine);
+        backToAppFromCombineBtn.addEventListener('click', showApp);
+
+        combineDropZone.addEventListener('click', () => combineFileInput.click());
+        combineFileInput.addEventListener('change', (e) => {
+            handleCombineFiles(e.target.files);
+            combineFileInput.value = ''; // Reset
+        });
+
+        function handleCombineFiles(files) {
+            for (let i = 0; i < files.length; i++) {
+                if (files[i].type === 'application/pdf') {
+                    combineFiles.push(files[i]);
+                }
+            }
+            renderCombineList();
+        }
+
+        function removeCombineFile(index) {
+            combineFiles.splice(index, 1);
+            renderCombineList();
+        }
+
+        function moveCombineFile(index, dir) {
+            if (index + dir < 0 || index + dir >= combineFiles.length) return;
+            const temp = combineFiles[index];
+            combineFiles[index] = combineFiles[index + dir];
+            combineFiles[index + dir] = temp;
+            renderCombineList();
+        }
+
+        function renderCombineList() {
+            combineFileList.innerHTML = '';
+            if (combineFiles.length > 0) {
+                combineFiles.forEach((file, index) => {
+                    const div = document.createElement('div');
+                    div.style.cssText = 'display: flex; align-items: center; justify-content: space-between; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 8px; border: 1px solid var(--border);';
+                    div.innerHTML = `
+                        <div style="display: flex; align-items: center; gap: 8px; overflow: hidden; flex: 1;">
+                            <i data-lucide="file-text" style="width: 16px; color: var(--accent);"></i>
+                            <span style="font-size: 0.85rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">${file.name}</span>
+                        </div>
+                        <div style="display: flex; gap: 5px;">
+                            <button onclick="moveCombineFile(${index}, -1)" style="background: none; border: none; color: var(--text); cursor: pointer;" ${index === 0 ? 'disabled style="opacity: 0.3;"' : ''}><i data-lucide="arrow-up" style="width: 14px;"></i></button>
+                            <button onclick="moveCombineFile(${index}, 1)" style="background: none; border: none; color: var(--text); cursor: pointer;" ${index === combineFiles.length - 1 ? 'disabled style="opacity: 0.3;"' : ''}><i data-lucide="arrow-down" style="width: 14px;"></i></button>
+                            <button onclick="removeCombineFile(${index})" style="background: none; border: none; color: #ef4444; cursor: pointer; margin-left: 5px;"><i data-lucide="x" style="width: 14px;"></i></button>
+                        </div>
+                    `;
+                    combineFileList.appendChild(div);
+                });
+                lucide.createIcons();
+                processCombineBtn.disabled = combineFiles.length < 2;
+                if (combineFiles.length < 2) {
+                    showCombineStatus('Pilih minimal 2 file untuk digabungkan.', '');
+                } else {
+                    showCombineStatus('', '');
+                }
+            } else {
+                processCombineBtn.disabled = true;
+                combineFileList.innerHTML = '<p style="text-align: center; color: var(--text-muted); font-size: 0.85rem;">Belum ada file yang dipilih.</p>';
+            }
+        }
+
+        function showCombineStatus(msg, type) {
+            combineStatusMsg.textContent = msg;
+            combineStatusMsg.className = 'status-msg ' + type;
+            combineStatusMsg.style.display = msg ? 'block' : 'none';
+        }
+
+        processCombineBtn.addEventListener('click', async () => {
+            if (combineFiles.length < 2) return;
+
+            processCombineBtn.disabled = true;
+            combineLoader.style.display = 'block';
+            combineBtnText.textContent = 'Menggabungkan PDF...';
+            showCombineStatus('Sedang memproses, mohon tunggu...', 'success');
+
+            const formData = new FormData();
+            combineFiles.forEach(f => formData.append('files', f));
+
+            try {
+                const response = await fetch('/api/combine', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    a.download = `Combined_PDF.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showCombineStatus('PDF berhasil digabungkan!', 'success');
+                } else {
+                    const error = await response.json();
+                    showCombineStatus(error.detail || 'Terjadi kesalahan saat menggabungkan.', 'error');
+                }
+            } catch (err) {
+                showCombineStatus('Gagal terhubung ke server.', 'error');
+            } finally {
+                processCombineBtn.disabled = false;
+                combineLoader.style.display = 'none';
+                combineBtnText.textContent = 'Mulai Gabungkan PDF';
+            }
+        });
+
+        // --- Compress Logic ---
+        showCompressBtn.addEventListener('click', showCompress);
+        backToAppFromCompressBtn.addEventListener('click', showApp);
+
+        compressDropZone.addEventListener('click', () => compressFileInput.click());
+
+        compressFileInput.addEventListener('change', (e) => {
+            handleCompressFile(e.target.files[0]);
+        });
+
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            compressDropZone.addEventListener(eventName, preventDefaults, false);
+        });
+
+        ['dragenter', 'dragover'].forEach(eventName => {
+            compressDropZone.addEventListener(eventName, () => compressDropZone.classList.add('dragover'), false);
+        });
+
+        ['dragleave', 'drop'].forEach(eventName => {
+            compressDropZone.addEventListener(eventName, () => compressDropZone.classList.remove('dragover'), false);
+        });
+
+        compressDropZone.addEventListener('drop', (e) => {
+            const dt = e.dataTransfer;
+            handleCompressFile(dt.files[0]);
+        });
+
+        function handleCompressFile(file) {
+            if (file && file.type === 'application/pdf') {
+                compressFile = file;
+                compressFileNameDisplay.textContent = file.name;
+                compressFilePreview.style.display = 'flex';
+                processCompressBtn.disabled = false;
+                showCompressStatus('', '');
+            } else if (file) {
+                showCompressStatus('Mohon unggah file format PDF saja.', 'error');
+                compressFile = null;
+                compressFilePreview.style.display = 'none';
+                processCompressBtn.disabled = true;
+            }
+        }
+
+        function showCompressStatus(msg, type) {
+            compressStatusMsg.textContent = msg;
+            compressStatusMsg.className = 'status-msg ' + type;
+            compressStatusMsg.style.display = msg ? 'block' : 'none';
+        }
+
+        processCompressBtn.addEventListener('click', async () => {
+            if (!compressFile) return;
+
+            processCompressBtn.disabled = true;
+            compressLoader.style.display = 'block';
+            compressBtnText.textContent = 'Mengompres PDF...';
+            showCompressStatus('Sedang memproses, mohon tunggu...', 'success');
+
+            const formData = new FormData();
+            formData.append('file', compressFile);
+
+            try {
+                const response = await fetch('/api/compress', {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (response.ok) {
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.style.display = 'none';
+                    a.href = url;
+                    const baseName = compressFile.name.substring(0, compressFile.name.lastIndexOf('.'));
+                    a.download = `${baseName}_compressed.pdf`;
+                    document.body.appendChild(a);
+                    a.click();
+                    window.URL.revokeObjectURL(url);
+                    showCompressStatus('PDF berhasil dikompres!', 'success');
+                } else {
+                    const error = await response.json();
+                    showCompressStatus(error.detail || 'Terjadi kesalahan saat mengompres.', 'error');
+                }
+            } catch (err) {
+                showCompressStatus('Gagal terhubung ke server.', 'error');
+            } finally {
+                processCompressBtn.disabled = false;
+                compressLoader.style.display = 'none';
+                compressBtnText.textContent = 'Mulai Kompres PDF';
+            }
+        });
+
     </script>
 </body>
-
 </html>
